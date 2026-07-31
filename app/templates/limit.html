@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ org }} — device limit reached</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+           margin: 0; padding: 32px 20px; color: #111; background: #f6f6f6; }
+    .card { max-width: 480px; margin: 40px auto; background: #fff; border-radius: 12px;
+            padding: 28px; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    p { line-height: 1.55; color: #333; }
+    .muted { color: #666; font-size: 14px; }
+    a { color: #0b5fff; }
+  </style>
+</head>
+<body>
+  <div class="card" role="main">
+    <h1>Device limit reached</h1>
+    <p>This membership card has already been added to {{ limit }} devices, which is
+       the maximum allowed.</p>
+    <p>If you have changed or lost your phone, we can reset this for you.</p>
+    <p class="muted">
+      {% if support %}
+        Email <a href="mailto:{{ support }}">{{ support }}</a> from the address your
+        membership is registered under, and we will free up a slot.
+      {% else %}
+        Please contact your administrator to have a slot freed up.
+      {% endif %}
+    </p>
+  </div>
+</body>
+</html>

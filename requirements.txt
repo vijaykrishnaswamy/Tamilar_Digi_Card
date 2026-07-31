@@ -1,0 +1,13 @@
+Flask==3.0.3
+gunicorn==22.0.0
+google-cloud-firestore==2.16.1
+google-cloud-secret-manager==2.20.0
+google-cloud-storage==2.17.0
+google-api-python-client==2.134.0
+google-auth==2.30.0
+# PKCS#7 detached signing for .pkpass (pkcs7 module requires cryptography>=38)
+cryptography==42.0.8
+# ES256 JWT for APNs auth, RS256 JWT for the Google Wallet save link
+PyJWT==2.8.0
+# APNs requires HTTP/2
+httpx[http2]==0.27.0
