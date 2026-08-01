@@ -6,3 +6,6 @@ __pycache__/
 *.p8
 *.p12
 *-sa.json
+certs/
+dist/
+*.pkpass
