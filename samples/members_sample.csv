@@ -1,0 +1,6 @@
+email,membership_number,status,member_names,expiry_date,member_since
+vijay@example.org,1000207,ACTIVE,Vijayakumar Krishnaswamy; Saranya Subramani,2026-10-10,2022-11-04
+solo@example.org,1000208,ACTIVE,Solo Member,10/10/2026,4 Nov 2022
+lapsed@example.org,1000209,EXPIRED,Lapsed Member,2025-06-30,2019-01-15
+minimal@example.org,1000210,ACTIVE,,,
+family@example.org,1000211,ACTIVE,Anand Raj|Priya Raj|Kavya Raj,2027-03-01,2023-07-22
