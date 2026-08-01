@@ -69,10 +69,20 @@ def bundled_images() -> Dict[str, bytes]:
     return images
 
 
+LIFETIME = "NA"
+
+
+def is_lifetime(expiry: str) -> bool:
+    """A lifetime membership carries the literal 'NA' rather than a date."""
+    return str(expiry or "").strip().upper() == LIFETIME
+
+
 def _fmt_date(iso: str, style: str = "%d %b %Y") -> str:
-    """yyyy-mm-dd -> display form. Returns '' for blank/unparseable."""
+    """yyyy-mm-dd -> display form. Passes 'NA' through. '' for blank."""
     if not iso:
         return ""
+    if is_lifetime(iso):
+        return LIFETIME
     try:
         return datetime.strptime(str(iso)[:10], "%Y-%m-%d").strftime(style)
     except ValueError:
@@ -109,16 +119,10 @@ def build_pass_json(member: Dict, base_url: str, auth_token: str) -> Dict:
             "textAlignment": "PKTextAlignmentRight",
         })
 
-    # MEMBER SINCE is deliberately NOT on the card face. Apple lays fields out
-    # horizontally within a row, so pairing it with MEMBERSHIP NUMBER put two fields
-    # side by side. With it moved to the back, each remaining field owns its own row
-    # and the face matches the approved mockup. The value is still captured and
-    # stored, and is shown on the reverse.
     secondary_fields = [{
         "key": "membership", "label": "MEMBERSHIP NUMBER",
         "value": member.get("membership_number", ""),
     }]
-    since_display = _fmt_date(member.get("member_since", ""))
 
     pass_json = {
         "formatVersion": 1,
@@ -142,18 +146,14 @@ def build_pass_json(member: Dict, base_url: str, auth_token: str) -> Dict:
             "auxiliaryFields": [
                 {"key": "status", "label": "MEMBERSHIP STATUS", "value": status},
             ],
-            "backFields": (
-                ([{"key": "since", "label": "Member since", "value": since_display}]
-                 if since_display else [])
-                + [
-                    {"key": "email", "label": "Registered email",
-                     "value": member.get("email", "")},
-                    {"key": "support", "label": "Support",
-                     "value": config.SUPPORT_EMAIL or "Contact your administrator"},
-                    {"key": "updated", "label": "Last updated",
-                     "value": datetime.now(timezone.utc).strftime("%d %b %Y")},
-                ]
-            ),
+            "backFields": [
+                {"key": "email", "label": "Registered email",
+                 "value": member.get("email", "")},
+                {"key": "support", "label": "Support",
+                 "value": config.SUPPORT_EMAIL or "Contact your administrator"},
+                {"key": "updated", "label": "Last updated",
+                 "value": datetime.now(timezone.utc).strftime("%d %b %Y")},
+            ],
         },
         "barcodes": [{
             "format": "PKBarcodeFormatQR",
@@ -162,9 +162,12 @@ def build_pass_json(member: Dict, base_url: str, auth_token: str) -> Dict:
         }],
     }
 
-    # Native expiry: Wallet greys the card out by itself once this passes.
-    if member.get("expiry_date"):
-        pass_json["expirationDate"] = f"{str(member['expiry_date'])[:10]}T23:59:59Z"
+    # Native expiry: Wallet greys the card out by itself once this passes. MUST be
+    # omitted for a lifetime member ('NA') - setting it would make Wallet expire a
+    # card that never expires. The face still shows "EXPIRY DATE  NA".
+    expiry = member.get("expiry_date")
+    if expiry and not is_lifetime(expiry):
+        pass_json["expirationDate"] = f"{str(expiry)[:10]}T23:59:59Z"
 
     return pass_json
 

@@ -20,7 +20,7 @@ def test_normalise_lowercases_email_and_uppercases_status():
     )
     assert out == {
         "email": "bob@example.com", "membership_number": "12345", "status": "ACTIVE",
-        "member_names": [], "expiry_date": "", "member_since": "",
+        "member_names": [], "expiry_date": "",
     }
 
 
@@ -28,11 +28,10 @@ def test_normalise_names_and_dates():
     out = ingest.normalise_record({
         "email": "a@b.com", "membership_number": "1000207", "status": "ACTIVE",
         "member_names": "Vijayakumar Krishnaswamy; Saranya Subramani",
-        "expiry_date": "10/10/2026", "member_since": "4 Nov 2022",
+        "expiry_date": "10/10/2026",
     })
     assert out["member_names"] == ["Vijayakumar Krishnaswamy", "Saranya Subramani"]
     assert out["expiry_date"] == "2026-10-10"      # dd/mm/yyyy -> ISO
-    assert out["member_since"] == "2022-11-04"     # '4 Nov 2022' -> ISO
 
     # JSON callers can send a real list
     out2 = ingest.normalise_record({
@@ -124,7 +123,7 @@ def _sample_member():
         "member_id": "m1", "apple_serial": "m1", "email": "a@b.com",
         "membership_number": "1000207", "status": "ACTIVE", "link_token": "tok",
         "member_names": ["Vijayakumar Krishnaswamy", "Saranya Subramani"],
-        "expiry_date": "2026-10-10", "member_since": "2022-11-04",
+        "expiry_date": "2026-10-10",
     }
 
 
@@ -159,7 +158,8 @@ def test_apple_pass_layout_matches_mockup():
     assert generic["auxiliaryFields"][0]["value"] == "ACTIVE"
 
     back = {f["label"]: f["value"] for f in generic["backFields"]}
-    assert back["Member since"] == "04 Nov 2022"
+    assert "Member since" not in back          # dropped entirely
+    assert back["Registered email"] == "a@b.com"
 
     assert body["expirationDate"] == "2026-10-10T23:59:59Z"
     assert body["barcodes"][0]["message"] == "1000207"
@@ -169,7 +169,7 @@ def test_apple_pass_layout_matches_mockup():
 def test_single_name_and_missing_optional_fields():
     from app import pass_apple
     member = {**_sample_member(), "member_names": ["Solo Member"],
-              "expiry_date": "", "member_since": ""}
+              "expiry_date": ""}
     generic = pass_apple.build_pass_json(member, "https://x.example", "auth")["generic"]
     assert generic["primaryFields"][0]["value"] == "Solo Member"
     assert generic["headerFields"] == []                      # no expiry -> no header row
@@ -206,3 +206,43 @@ def test_auth_token_is_deterministic_and_not_the_link_token():
     token = pass_apple.auth_token_for(member)
     assert token == pass_apple.auth_token_for(member)
     assert token != "public-token"
+
+
+# --- lifetime memberships ("NA" expiry) --------------------------------------
+
+def test_ingest_accepts_na_as_lifetime():
+    for raw in ("NA", "na", "N/A", "n.a.", "LIFETIME", "Nil", "-"):
+        out = ingest.normalise_record({"email": "a@b.com", "membership_number": "1",
+                                       "status": "ACTIVE", "expiry_date": raw})
+        assert out["expiry_date"] == "NA", f"{raw!r} should map to NA"
+
+
+def test_apple_lifetime_shows_na_and_omits_expirationDate():
+    from app import pass_apple
+    member = {**_sample_member(), "expiry_date": "NA"}
+    body = pass_apple.build_pass_json(member, "https://x.example", "auth")
+
+    # face still shows the label, with NA as the value
+    assert body["generic"]["headerFields"][0]["label"] == "EXPIRY DATE"
+    assert body["generic"]["headerFields"][0]["value"] == "NA"
+    # critical: no native expiry, or Wallet would expire a lifetime card
+    assert "expirationDate" not in body
+
+    dated = pass_apple.build_pass_json(_sample_member(), "https://x.example", "auth")
+    assert dated["expirationDate"] == "2026-10-10T23:59:59Z"
+
+
+def test_google_lifetime_omits_validTimeInterval():
+    from app import config, pass_google
+    config.GOOGLE_ISSUER_ID = "3388000000012345678"
+
+    body = pass_google._object_body({**_sample_member(), "expiry_date": "NA"})
+    assert "validTimeInterval" not in body
+    assert "subheader" not in body                     # "Expires NA" reads badly
+    headers = [m["header"] for m in body["textModulesData"]]
+    assert headers == ["MEMBERSHIP NUMBER", "MEMBERSHIP STATUS", "EXPIRY DATE"]
+    assert body["textModulesData"][-1]["body"] == "NA"
+
+    dated = pass_google._object_body(_sample_member())
+    assert dated["validTimeInterval"]["end"]["date"] == "2026-10-10T23:59:59.000Z"
+    assert dated["subheader"]["defaultValue"]["value"] == "Expires 10-Oct-2026"

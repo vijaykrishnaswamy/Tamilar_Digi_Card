@@ -91,9 +91,18 @@ def ensure_class() -> str:
 
 # --- object -----------------------------------------------------------------
 
+LIFETIME = "NA"
+
+
+def is_lifetime(expiry: str) -> bool:
+    return str(expiry or "").strip().upper() == LIFETIME
+
+
 def _fmt_date(iso: str, style: str = "%d %b %Y") -> str:
     if not iso:
         return ""
+    if is_lifetime(iso):
+        return LIFETIME
     from datetime import datetime
     try:
         return datetime.strptime(str(iso)[:10], "%Y-%m-%d").strftime(style)
@@ -122,6 +131,11 @@ def _object_body(member: Dict) -> Dict:
         {"id": "membership", "header": "MEMBERSHIP NUMBER", "body": membership},
         {"id": "status", "header": "MEMBERSHIP STATUS", "body": status},
     ]
+    # Google's subheader carries the expiry; a lifetime card needs it stated on a
+    # text module instead, because "Expires NA" reads badly.
+    expiry_raw = member.get("expiry_date", "")
+    if is_lifetime(expiry_raw):
+        text_modules.append({"id": "expiry", "header": "EXPIRY DATE", "body": LIFETIME})
 
     body = {
         "id": object_id(member),
@@ -134,13 +148,14 @@ def _object_body(member: Dict) -> Dict:
         "barcode": {"type": "QR_CODE", "value": membership},
     }
 
-    expiry_display = _fmt_date(member.get("expiry_date", ""), "%d-%b-%Y")
-    if expiry_display:
+    # Lifetime members get NO subheader and NO validTimeInterval - setting the latter
+    # would make Wallet treat a never-expiring card as expired.
+    expiry_display = _fmt_date(expiry_raw, "%d-%b-%Y")
+    if expiry_display and not is_lifetime(expiry_raw):
         body["subheader"] = {"defaultValue": {"language": "en-AU",
                                              "value": f"Expires {expiry_display}"}}
-        # Native expiry so Wallet can de-emphasise a lapsed card by itself.
         body["validTimeInterval"] = {
-            "end": {"date": f"{str(member['expiry_date'])[:10]}T23:59:59.000Z"}
+            "end": {"date": f"{str(expiry_raw)[:10]}T23:59:59.000Z"}
         }
 
     if config.CARD_LOGO_URL:

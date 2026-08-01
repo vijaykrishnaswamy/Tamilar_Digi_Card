@@ -26,7 +26,13 @@ FIELD_STATUS = "status"
 # as a single string or as multiple names separated by ';' , '|' or ','.
 FIELD_NAMES = "member_names"
 FIELD_EXPIRY = "expiry_date"
-FIELD_SINCE = "member_since"
+
+# Lifetime members have no expiry. The source system emits "NA", and we keep that
+# literal all the way to the card face so it reads "EXPIRY DATE  NA". Critically it
+# must NOT become a real date, and must NOT set Apple's expirationDate / Google's
+# validTimeInterval - either would make Wallet treat the card as expired.
+LIFETIME = "NA"
+_LIFETIME_INPUTS = {"NA", "N/A", "NIL", "NONE", "LIFETIME", "LIFE", "PERPETUAL", "-"}
 
 # Accepted CSV header aliases -> canonical field
 _ALIASES = {
@@ -49,10 +55,6 @@ _ALIASES = {
     "membership_expiry": FIELD_EXPIRY,
     "expires": FIELD_EXPIRY,
     "expiration_date": FIELD_EXPIRY,
-    "member_since": FIELD_SINCE,
-    "joined": FIELD_SINCE,
-    "join_date": FIELD_SINCE,
-    "joined_date": FIELD_SINCE,
 }
 
 _NAME_SPLIT = re.compile(r"[;|,]")
@@ -68,7 +70,7 @@ def split_names(raw: str) -> List[str]:
 
 
 def normalise_date(raw: str) -> str:
-    """Return ISO yyyy-mm-dd. Accepts the common AU formats.
+    """Return ISO yyyy-mm-dd, the literal 'NA' for a lifetime member, or ''.
 
     Raises ValidationError on an unparseable non-empty value rather than silently
     dropping it - a wrong expiry date on a membership card is worse than no card.
@@ -76,12 +78,16 @@ def normalise_date(raw: str) -> str:
     value = (raw or "").strip()
     if not value:
         return ""
+    if value.upper().replace(".", "").replace(" ", "") in _LIFETIME_INPUTS:
+        return LIFETIME
     for fmt in _DATE_FORMATS:
         try:
             return datetime.strptime(value[:10] if fmt == "%Y-%m-%d" else value, fmt).strftime("%Y-%m-%d")
         except ValueError:
             continue
-    raise ValidationError(f"unrecognised expiry_date '{raw}' (use yyyy-mm-dd or dd/mm/yyyy)")
+    raise ValidationError(
+        f"unrecognised expiry_date '{raw}' (use yyyy-mm-dd, dd/mm/yyyy, or NA for lifetime)"
+    )
 
 
 class ValidationError(ValueError):
@@ -122,7 +128,6 @@ def normalise_record(raw: Dict[str, Any]) -> Dict[str, Any]:
         FIELD_STATUS: status,
         FIELD_NAMES: names,
         FIELD_EXPIRY: normalise_date(record.get(FIELD_EXPIRY, "")),
-        FIELD_SINCE: normalise_date(record.get(FIELD_SINCE, "")),
     }
 
 

@@ -65,7 +65,6 @@ def _issue_and_notify(record: dict) -> dict:
         record[ingest.FIELD_STATUS],
         member_names=record.get(ingest.FIELD_NAMES) or [],
         expiry_date=record.get(ingest.FIELD_EXPIRY, ""),
-        member_since=record.get(ingest.FIELD_SINCE, ""),
     )
     outcome = {"email": member["email"], "status": member["status"],
                "new": member["_is_new"], "status_changed": member["_status_changed"]}
