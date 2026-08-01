@@ -33,6 +33,21 @@ def test_no_photo_returns_nothing(tmp_path):
     assert photos.photo_url("1000207") == ""
 
 
+def test_photo_url_requires_a_bucket(tmp_path):
+    """Signed URLs come from GCS, so with no bucket configured there is no URL even
+    when a local photo exists. Apple is unaffected - it embeds the bytes."""
+    _reset(tmp_path)
+    _write_jpeg(tmp_path, "1000207.jpeg")
+    assert photos.has_photo("1000207") is True
+    assert photos.apple_thumbnails("1000207") != {}
+    assert photos.photo_url("1000207") == ""          # no PHOTO_BUCKET set
+
+
+def test_rendered_key_layout():
+    config.PHOTO_PREFIX = "member-photos/"
+    assert photos.rendered_key("1000207") == "member-photos/rendered/1000207.png"
+
+
 def test_photo_found_by_membership_number(tmp_path):
     _reset(tmp_path)
     _write_jpeg(tmp_path, "1000207.jpeg")
@@ -46,7 +61,8 @@ def test_photo_found_by_membership_number(tmp_path):
         assert image.size == (expected, expected), f"{name} wrong size"
         assert thumbs[name].startswith(b"\x89PNG")
 
-    assert photos.photo_url("1000207") == "https://wallet.example.org/photo/1000207.png"
+    square = photos.google_square("1000207")
+    assert Image.open(io.BytesIO(square)).size == (400, 400)
 
 
 def test_accepts_jpg_and_png_extensions(tmp_path):
@@ -78,7 +94,7 @@ def test_apple_pass_includes_thumbnail_only_when_photo_exists(tmp_path):
     assert "thumbnail.png" in photos.apple_thumbnails(member["membership_number"])
 
 
-def test_google_object_photo_module(tmp_path):
+def test_google_object_photo_module(tmp_path, monkeypatch):
     _reset(tmp_path)
     from app import pass_google
     config.GOOGLE_ISSUER_ID = "3388000000012345678"
@@ -87,10 +103,26 @@ def test_google_object_photo_module(tmp_path):
               "member_names": ["A B"], "expiry_date": "2026-10-10",
               "google_object_id": "3388000000012345678.m1", "email": "a@b.com"}
 
+    # no photo -> module omitted
     assert "imageModulesData" not in pass_google._object_body(member)
 
+    # with a photo, the module carries whatever signed URL photo_url returns.
+    # Signing itself needs GCS + a service-account key, so stub it here.
     _write_jpeg(tmp_path, "1000207.jpeg")
     photos.source_bytes.cache_clear()
+    signed = ("https://storage.googleapis.com/tamilar-member-photos/"
+              "member-photos/rendered/1000207.png?X-Goog-Signature=abc123")
+    monkeypatch.setattr(photos, "photo_url", lambda n: signed if n == "1000207" else "")
+
     body = pass_google._object_body(member)
     uri = body["imageModulesData"][0]["mainImage"]["sourceUri"]["uri"]
-    assert uri == "https://wallet.example.org/photo/1000207.png"
+    assert uri == signed
+    assert "X-Goog-Signature" in uri            # signed, not a public endpoint
+    assert "/photo/" not in uri                 # the old public route is gone
+
+
+def test_no_public_photo_route_exists():
+    """The public /photo/<n>.png endpoint was removed in favour of signed URLs."""
+    from app import main
+    rules = [str(r) for r in main.app.url_map.iter_rules()]
+    assert not any("/photo/" in r for r in rules), rules

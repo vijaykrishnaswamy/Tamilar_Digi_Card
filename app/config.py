@@ -37,6 +37,10 @@ ORG_NAME = os.environ.get("ORG_NAME", "Membership")
 PHOTO_BUCKET = os.environ.get("PHOTO_BUCKET", "")
 PHOTO_PREFIX = os.environ.get("PHOTO_PREFIX", "member-photos/")
 PHOTO_LOCAL_DIR = os.environ.get("PHOTO_LOCAL_DIR", "")
+# Google Wallet fetches the photo from a V4 signed GCS URL rather than a public
+# endpoint, so the bucket stays private and photos are not enumerable. 7 days is
+# the V4 maximum. The URL is re-minted on every object create/patch.
+PHOTO_URL_TTL_DAYS = int(os.environ.get("PHOTO_URL_TTL_DAYS", "7"))
 # Google Wallet needs the logo as a public HTTPS URL (it fetches it server-side);
 # Apple embeds the image bytes in the .pkpass instead. Defaults to this service's
 # own /assets/logo.png so no extra hosting is needed.

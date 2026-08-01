@@ -136,9 +136,74 @@ def has_photo(membership_number: str) -> bool:
     return source_bytes(membership_number) is not None
 
 
-def photo_url(membership_number: str) -> str:
-    """Public URL Google Wallet fetches. Empty when the member has no photo."""
+# --- Google: private bucket + V4 signed URL ---------------------------------
+# The bucket stays private. Google's servers fetch a time-limited signed URL, so
+# photos are not enumerable by membership number the way a public /photo/<n>.png
+# endpoint would be.
+
+def rendered_key(key: str) -> str:
+    """Object path for the square PNG Google fetches."""
+    return f"{config.PHOTO_PREFIX}rendered/{key}.png"
+
+
+def _signing_credentials():
+    """Credentials able to sign a URL.
+
+    Cloud Run's metadata credentials have no private key, so signing uses the
+    Wallet service-account JSON already held in Secret Manager.
+    """
+    import json
+    from google.oauth2 import service_account
+    info = json.loads(config.get_secret(config.SECRET_GOOGLE_SA))
+    return service_account.Credentials.from_service_account_info(info)
+
+
+def ensure_rendered(membership_number: str) -> Optional[str]:
+    """Make sure the square PNG exists in GCS. Returns its object key, or None.
+
+    Rendered once and cached in the bucket; later calls only check existence.
+    """
     key = _safe(membership_number)
-    if not key or not config.SERVICE_BASE_URL or not has_photo(key):
+    if not key or not config.PHOTO_BUCKET:
+        return None
+    data = google_square(key)
+    if not data:
+        return None
+
+    from google.cloud import storage
+    blob = storage.Client().bucket(config.PHOTO_BUCKET).blob(rendered_key(key))
+    if not blob.exists():
+        blob.upload_from_string(data, content_type="image/png")
+        logger.info("rendered member photo cached at %s", rendered_key(key))
+    return rendered_key(key)
+
+
+def photo_url(membership_number: str) -> str:
+    """V4 signed GCS URL for Google Wallet. Empty when there is no photo.
+
+    NOTE the expiry. Google caches the image after fetching it, but a pass that is
+    never patched again could eventually lose the photo once the URL lapses. The
+    URL is re-minted on every upsert_object/patch, so any status, name or expiry
+    change refreshes it. For a long-lived unchanged pass, re-patch periodically.
+    """
+    key = _safe(membership_number)
+    if not key or not config.PHOTO_BUCKET:
         return ""
-    return f"{config.SERVICE_BASE_URL}/photo/{key}.png"
+    object_key = ensure_rendered(key)
+    if not object_key:
+        return ""
+
+    from datetime import timedelta
+
+    from google.cloud import storage
+    try:
+        blob = storage.Client().bucket(config.PHOTO_BUCKET).blob(object_key)
+        return blob.generate_signed_url(
+            version="v4",
+            expiration=timedelta(days=config.PHOTO_URL_TTL_DAYS),
+            method="GET",
+            credentials=_signing_credentials(),
+        )
+    except Exception as exc:  # noqa: BLE001 - a photo must never block a pass
+        logger.warning("could not sign photo URL for %s: %s", key, exc)
+        return ""
