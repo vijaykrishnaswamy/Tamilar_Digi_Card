@@ -208,8 +208,16 @@ def build_pkpass(member: Dict, images: Optional[Dict[str, bytes]] = None) -> byt
     files: Dict[str, bytes] = {
         "pass.json": json.dumps(pass_json, separators=(",", ":")).encode("utf-8"),
     }
-    # bundled artwork first, caller overrides win
-    files.update({**bundled_images(), **(images or {})})
+    # bundled artwork, then the member photo (if any), then caller overrides.
+    # thumbnail.png is Apple's only per-member image slot on a generic pass and it
+    # renders on the right of the card face - which is where the photo belongs.
+    # No photo simply means no thumbnail keys, and Apple lays the pass out without it.
+    from . import photos
+    files.update({
+        **bundled_images(),
+        **photos.apple_thumbnails(member.get("membership_number", "")),
+        **(images or {}),
+    })
 
     # manifest.json is SHA-1 per file. SHA-1 is mandated by Apple's format here;
     # it is an integrity manifest, not a security control (the PKCS#7 signature is).

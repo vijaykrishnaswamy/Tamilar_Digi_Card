@@ -150,6 +150,22 @@ def _object_body(member: Dict) -> Dict:
                                                     "value": f"{config.ORG_NAME} logo"}},
         }
 
+    # Member photo. Google's Generic pass has NO portrait slot equivalent to Apple's
+    # thumbnail, so the photo goes in an image module and renders BELOW the fields
+    # rather than beside them. Android will therefore not match the iOS layout.
+    # Absent photo = key omitted entirely.
+    from . import photos
+    photo = photos.photo_url(membership)
+    if photo:
+        body["imageModulesData"] = [{
+            "id": "member_photo",
+            "mainImage": {
+                "sourceUri": {"uri": photo},
+                "contentDescription": {"defaultValue": {"language": "en-AU",
+                                                        "value": "Member photo"}},
+            },
+        }]
+
     return body
 
 

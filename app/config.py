@@ -29,6 +29,14 @@ GOOGLE_ISSUER_ID = os.environ.get("GOOGLE_ISSUER_ID", "")
 GOOGLE_CLASS_SUFFIX = os.environ.get("GOOGLE_CLASS_SUFFIX", "membership")
 
 ORG_NAME = os.environ.get("ORG_NAME", "Membership")
+
+# --- member photos (optional per member) ------------------------------------
+# Photos are named by MEMBERSHIP NUMBER, e.g. 1000207.jpeg. Cloud Run cannot read
+# a local disk, so production reads from GCS; PHOTO_LOCAL_DIR is for development
+# and is checked first when set.
+PHOTO_BUCKET = os.environ.get("PHOTO_BUCKET", "")
+PHOTO_PREFIX = os.environ.get("PHOTO_PREFIX", "member-photos/")
+PHOTO_LOCAL_DIR = os.environ.get("PHOTO_LOCAL_DIR", "")
 # Google Wallet needs the logo as a public HTTPS URL (it fetches it server-side);
 # Apple embeds the image bytes in the .pkpass instead. Defaults to this service's
 # own /assets/logo.png so no extra hosting is needed.

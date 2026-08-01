@@ -119,6 +119,25 @@ def healthz():
     return jsonify(status="ok", ts=datetime.now(timezone.utc).isoformat())
 
 
+@app.get("/photo/<membership_number>.png")
+def member_photo(membership_number):
+    """Serve a member photo as a square PNG for Google Wallet to fetch.
+
+    Google's servers pull this URL, so it cannot be authenticated. It exposes only a
+    photo keyed on a membership number, and returns 404 when there is no photo -
+    but it IS enumerable by membership number, which is worth knowing. If that
+    matters, switch to a signed GCS URL with an expiry instead.
+    """
+    from . import photos
+    data = photos.google_square(membership_number)
+    if not data:
+        abort(404)
+    response = make_response(data)
+    response.headers["Content-Type"] = "image/png"
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return response
+
+
 @app.get("/assets/<path:filename>")
 def assets(filename):
     """Serve the card artwork. Google Wallet fetches the logo over HTTPS from here,
