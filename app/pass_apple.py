@@ -109,14 +109,16 @@ def build_pass_json(member: Dict, base_url: str, auth_token: str) -> Dict:
             "textAlignment": "PKTextAlignmentRight",
         })
 
-    secondary_fields = []
-    since_display = _fmt_date(member.get("member_since", ""))
-    if since_display:
-        secondary_fields.append({"key": "since", "label": "MEMBER SINCE", "value": since_display})
-    secondary_fields.append({
+    # MEMBER SINCE is deliberately NOT on the card face. Apple lays fields out
+    # horizontally within a row, so pairing it with MEMBERSHIP NUMBER put two fields
+    # side by side. With it moved to the back, each remaining field owns its own row
+    # and the face matches the approved mockup. The value is still captured and
+    # stored, and is shown on the reverse.
+    secondary_fields = [{
         "key": "membership", "label": "MEMBERSHIP NUMBER",
         "value": member.get("membership_number", ""),
-    })
+    }]
+    since_display = _fmt_date(member.get("member_since", ""))
 
     pass_json = {
         "formatVersion": 1,
@@ -140,13 +142,18 @@ def build_pass_json(member: Dict, base_url: str, auth_token: str) -> Dict:
             "auxiliaryFields": [
                 {"key": "status", "label": "MEMBERSHIP STATUS", "value": status},
             ],
-            "backFields": [
-                {"key": "email", "label": "Registered email", "value": member.get("email", "")},
-                {"key": "support", "label": "Support",
-                 "value": config.SUPPORT_EMAIL or "Contact your administrator"},
-                {"key": "updated", "label": "Last updated",
-                 "value": datetime.now(timezone.utc).strftime("%d %b %Y")},
-            ],
+            "backFields": (
+                ([{"key": "since", "label": "Member since", "value": since_display}]
+                 if since_display else [])
+                + [
+                    {"key": "email", "label": "Registered email",
+                     "value": member.get("email", "")},
+                    {"key": "support", "label": "Support",
+                     "value": config.SUPPORT_EMAIL or "Contact your administrator"},
+                    {"key": "updated", "label": "Last updated",
+                     "value": datetime.now(timezone.utc).strftime("%d %b %Y")},
+                ]
+            ),
         },
         "barcodes": [{
             "format": "PKBarcodeFormatQR",

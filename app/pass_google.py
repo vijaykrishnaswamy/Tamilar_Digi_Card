@@ -115,12 +115,13 @@ def _object_body(member: Dict) -> Dict:
         names = [names]
     name_value = ", ".join(names) if names else member.get("email", "")
 
-    text_modules = []
-    since_display = _fmt_date(member.get("member_since", ""))
-    if since_display:
-        text_modules.append({"id": "since", "header": "MEMBER SINCE", "body": since_display})
-    text_modules.append({"id": "membership", "header": "MEMBERSHIP NUMBER", "body": membership})
-    text_modules.append({"id": "status", "header": "MEMBERSHIP STATUS", "body": status})
+    # MEMBER SINCE dropped from the card face to match Apple (see pass_apple).
+    # Google's Generic pass has no reverse side, so it simply isn't displayed; the
+    # value is still captured and stored in Firestore.
+    text_modules = [
+        {"id": "membership", "header": "MEMBERSHIP NUMBER", "body": membership},
+        {"id": "status", "header": "MEMBERSHIP STATUS", "body": status},
+    ]
 
     body = {
         "id": object_id(member),

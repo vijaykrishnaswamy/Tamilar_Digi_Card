@@ -150,13 +150,16 @@ def test_apple_pass_layout_matches_mockup():
     assert generic["primaryFields"][0]["value"] == \
         "Vijayakumar Krishnaswamy\nSaranya Subramani"
 
+    # one field per row on the face: MEMBER SINCE lives on the back instead
     labels = [f["label"] for f in generic["secondaryFields"]]
-    assert labels == ["MEMBER SINCE", "MEMBERSHIP NUMBER"]
-    assert generic["secondaryFields"][0]["value"] == "04 Nov 2022"
-    assert generic["secondaryFields"][1]["value"] == "1000207"
+    assert labels == ["MEMBERSHIP NUMBER"]
+    assert generic["secondaryFields"][0]["value"] == "1000207"
 
     assert generic["auxiliaryFields"][0]["label"] == "MEMBERSHIP STATUS"
     assert generic["auxiliaryFields"][0]["value"] == "ACTIVE"
+
+    back = {f["label"]: f["value"] for f in generic["backFields"]}
+    assert back["Member since"] == "04 Nov 2022"
 
     assert body["expirationDate"] == "2026-10-10T23:59:59Z"
     assert body["barcodes"][0]["message"] == "1000207"
@@ -183,7 +186,7 @@ def test_google_object_mirrors_apple():
         "Vijayakumar Krishnaswamy, Saranya Subramani"
     assert body["subheader"]["defaultValue"]["value"] == "Expires 10-Oct-2026"
     headers = [m["header"] for m in body["textModulesData"]]
-    assert headers == ["MEMBER SINCE", "MEMBERSHIP NUMBER", "MEMBERSHIP STATUS"]
+    assert headers == ["MEMBERSHIP NUMBER", "MEMBERSHIP STATUS"]
     assert body["validTimeInterval"]["end"]["date"] == "2026-10-10T23:59:59.000Z"
     assert body["barcode"]["value"] == "1000207"
 
