@@ -29,14 +29,29 @@ GOOGLE_ISSUER_ID = os.environ.get("GOOGLE_ISSUER_ID", "")
 GOOGLE_CLASS_SUFFIX = os.environ.get("GOOGLE_CLASS_SUFFIX", "membership")
 
 ORG_NAME = os.environ.get("ORG_NAME", "Membership")
+# Google Wallet needs the logo as a public HTTPS URL (it fetches it server-side);
+# Apple embeds the image bytes in the .pkpass instead. Defaults to this service's
+# own /assets/logo.png so no extra hosting is needed.
+CARD_LOGO_URL = os.environ.get(
+    "CARD_LOGO_URL",
+    f"{SERVICE_BASE_URL}/assets/google_logo.png" if SERVICE_BASE_URL else "",
+)
 SUPPORT_EMAIL = os.environ.get("SUPPORT_EMAIL", "")
 EMAIL_SENDER = os.environ.get("EMAIL_SENDER", "")
 
 # LLD 3.2 / decision 5: block the 3rd device. Count of active devices allowed.
 MAX_DEVICES_PER_MEMBER = int(os.environ.get("MAX_DEVICES_PER_MEMBER", "2"))
 
-# Card colours carry the status, because neither wallet allows per-field bold or
-# colour (LLD section 8). ACTIVE = green card, EXPIRED = red card.
+# Card design, per the approved mockup: dark slate grey face, green field labels,
+# white values, logo top-left.
+CARD_BACKGROUND = "rgb(57,62,70)"          # #393E46 - Apple wants css-style rgb()
+CARD_BACKGROUND_HEX = "#393E46"            # Google wants #rrggbb
+CARD_FOREGROUND = "rgb(255,255,255)"       # field values
+CARD_LABEL = "rgb(139,195,74)"             # field labels (green)
+
+# Apple cannot colour an individual field, so status is NOT colour-coded on the card
+# face - it reads as its own labelled field. These are used by Google's text module
+# and by the invite email, where per-element colour IS possible.
 STATUS_COLOURS = {
     "ACTIVE": {"background": "rgb(21,128,61)", "hex": "#15803D"},
     "EXPIRED": {"background": "rgb(185,28,28)", "hex": "#B91C1C"},

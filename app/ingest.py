@@ -8,6 +8,7 @@ import csv
 import io
 import logging
 import re
+from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
 from . import config
@@ -21,6 +22,11 @@ _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$")
 FIELD_EMAIL = "email"
 FIELD_MEMBERSHIP = "membership_number"
 FIELD_STATUS = "status"
+# A membership can cover more than one person (household / family). Supplied either
+# as a single string or as multiple names separated by ';' , '|' or ','.
+FIELD_NAMES = "member_names"
+FIELD_EXPIRY = "expiry_date"
+FIELD_SINCE = "member_since"
 
 # Accepted CSV header aliases -> canonical field
 _ALIASES = {
@@ -33,7 +39,49 @@ _ALIASES = {
     "member_number": FIELD_MEMBERSHIP,
     "status": FIELD_STATUS,
     "membership_status": FIELD_STATUS,
+    "member_names": FIELD_NAMES,
+    "member_name": FIELD_NAMES,
+    "names": FIELD_NAMES,
+    "name": FIELD_NAMES,
+    "full_name": FIELD_NAMES,
+    "expiry_date": FIELD_EXPIRY,
+    "expiry": FIELD_EXPIRY,
+    "membership_expiry": FIELD_EXPIRY,
+    "expires": FIELD_EXPIRY,
+    "expiration_date": FIELD_EXPIRY,
+    "member_since": FIELD_SINCE,
+    "joined": FIELD_SINCE,
+    "join_date": FIELD_SINCE,
+    "joined_date": FIELD_SINCE,
 }
+
+_NAME_SPLIT = re.compile(r"[;|,]")
+_DATE_FORMATS = ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d %b %Y", "%d %B %Y",
+                 "%Y/%m/%d", "%m/%d/%Y")
+
+
+def split_names(raw: str) -> List[str]:
+    """One or more member names -> a clean list. Order is preserved."""
+    if not raw:
+        return []
+    return [part.strip() for part in _NAME_SPLIT.split(str(raw)) if part.strip()]
+
+
+def normalise_date(raw: str) -> str:
+    """Return ISO yyyy-mm-dd. Accepts the common AU formats.
+
+    Raises ValidationError on an unparseable non-empty value rather than silently
+    dropping it - a wrong expiry date on a membership card is worse than no card.
+    """
+    value = (raw or "").strip()
+    if not value:
+        return ""
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(value[:10] if fmt == "%Y-%m-%d" else value, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    raise ValidationError(f"unrecognised expiry_date '{raw}' (use yyyy-mm-dd or dd/mm/yyyy)")
 
 
 class ValidationError(ValueError):
@@ -44,7 +92,7 @@ def _canonical_key(key: str) -> str:
     return _ALIASES.get((key or "").strip().lower().replace(" ", "_"), (key or "").strip().lower())
 
 
-def normalise_record(raw: Dict[str, Any]) -> Dict[str, str]:
+def normalise_record(raw: Dict[str, Any]) -> Dict[str, Any]:
     """Validate one record. Raises ValidationError with a usable message."""
     record = {_canonical_key(k): (v if v is not None else "") for k, v in (raw or {}).items()}
 
@@ -63,10 +111,22 @@ def normalise_record(raw: Dict[str, Any]) -> Dict[str, str]:
             f"status must be one of {config.VALID_STATUSES}, got '{status}' (email={email})"
         )
 
-    return {FIELD_EMAIL: email, FIELD_MEMBERSHIP: membership, FIELD_STATUS: status}
+    # member_names accepts a list (JSON) or a delimited string (CSV).
+    raw_names = record.get(FIELD_NAMES, "")
+    names = [str(n).strip() for n in raw_names if str(n).strip()] if isinstance(raw_names, list) \
+        else split_names(raw_names)
+
+    return {
+        FIELD_EMAIL: email,
+        FIELD_MEMBERSHIP: membership,
+        FIELD_STATUS: status,
+        FIELD_NAMES: names,
+        FIELD_EXPIRY: normalise_date(record.get(FIELD_EXPIRY, "")),
+        FIELD_SINCE: normalise_date(record.get(FIELD_SINCE, "")),
+    }
 
 
-def parse_json_payload(payload: Any) -> Tuple[List[Dict[str, str]], List[str]]:
+def parse_json_payload(payload: Any) -> Tuple[List[Dict[str, Any]], List[str]]:
     """Accepts a single object or an array (LLD 1.2). Returns (valid, errors)."""
     if isinstance(payload, dict):
         # tolerate {"records": [...]} as well as a bare object
@@ -76,7 +136,7 @@ def parse_json_payload(payload: Any) -> Tuple[List[Dict[str, str]], List[str]]:
     return _collect(payload)
 
 
-def parse_csv(data: str) -> Tuple[List[Dict[str, str]], List[str]]:
+def parse_csv(data: str) -> Tuple[List[Dict[str, Any]], List[str]]:
     """Parse the CSV job input (LLD 1.1)."""
     reader = csv.DictReader(io.StringIO(data))
     if not reader.fieldnames:
@@ -84,12 +144,12 @@ def parse_csv(data: str) -> Tuple[List[Dict[str, str]], List[str]]:
     return _collect(list(reader))
 
 
-def _collect(rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, str]], List[str]]:
+def _collect(rows: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[str]]:
     """Validate and de-duplicate. Last occurrence of an email wins, so a corrected
     row later in the same file supersedes an earlier one.
     """
     errors: List[str] = []
-    by_email: Dict[str, Dict[str, str]] = {}
+    by_email: Dict[str, Dict[str, Any]] = {}
 
     for index, row in enumerate(rows, start=1):
         try:

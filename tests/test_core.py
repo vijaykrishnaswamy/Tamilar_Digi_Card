@@ -18,7 +18,37 @@ def test_normalise_lowercases_email_and_uppercases_status():
     out = ingest.normalise_record(
         {"Email Address": " Bob@Example.COM ", "membership": " 12345 ", "status": "active"}
     )
-    assert out == {"email": "bob@example.com", "membership_number": "12345", "status": "ACTIVE"}
+    assert out == {
+        "email": "bob@example.com", "membership_number": "12345", "status": "ACTIVE",
+        "member_names": [], "expiry_date": "", "member_since": "",
+    }
+
+
+def test_normalise_names_and_dates():
+    out = ingest.normalise_record({
+        "email": "a@b.com", "membership_number": "1000207", "status": "ACTIVE",
+        "member_names": "Vijayakumar Krishnaswamy; Saranya Subramani",
+        "expiry_date": "10/10/2026", "member_since": "4 Nov 2022",
+    })
+    assert out["member_names"] == ["Vijayakumar Krishnaswamy", "Saranya Subramani"]
+    assert out["expiry_date"] == "2026-10-10"      # dd/mm/yyyy -> ISO
+    assert out["member_since"] == "2022-11-04"     # '4 Nov 2022' -> ISO
+
+    # JSON callers can send a real list
+    out2 = ingest.normalise_record({
+        "email": "a@b.com", "membership_number": "1", "status": "ACTIVE",
+        "member_names": ["One Person", "Two Person"],
+    })
+    assert out2["member_names"] == ["One Person", "Two Person"]
+
+
+def test_bad_expiry_date_is_rejected_not_dropped():
+    try:
+        ingest.normalise_record({"email": "a@b.com", "membership_number": "1",
+                                 "status": "ACTIVE", "expiry_date": "next tuesday"})
+        assert False, "should have rejected an unparseable date"
+    except ingest.ValidationError as exc:
+        assert "expiry_date" in str(exc)
 
 
 def test_rejects_bad_email():
@@ -89,23 +119,82 @@ def test_apple_device_id_is_stable_and_hashed():
 
 # --- pass content -----------------------------------------------------------
 
-def test_pass_json_uses_colour_for_status_not_bold_text():
+def _sample_member():
+    return {
+        "member_id": "m1", "apple_serial": "m1", "email": "a@b.com",
+        "membership_number": "1000207", "status": "ACTIVE", "link_token": "tok",
+        "member_names": ["Vijayakumar Krishnaswamy", "Saranya Subramani"],
+        "expiry_date": "2026-10-10", "member_since": "2022-11-04",
+    }
+
+
+def test_apple_pass_layout_matches_mockup():
     from app import config, pass_apple
 
     config.APPLE_PASS_TYPE_ID = "pass.test"
     config.APPLE_TEAM_ID = "TEAM123"
-    member = {"member_id": "m1", "apple_serial": "m1", "email": "a@b.com",
-              "membership_number": "12345", "status": "ACTIVE", "link_token": "tok"}
+    body = pass_apple.build_pass_json(_sample_member(), "https://x.example", "auth")
+    generic = body["generic"]
 
-    active = pass_apple.build_pass_json(member, "https://x.example", "auth")
-    assert active["backgroundColor"] == config.STATUS_COLOURS["ACTIVE"]["background"]
-    assert active["generic"]["secondaryFields"][0]["value"] == "ACTIVE"
-    assert active["barcodes"][0]["message"] == "12345"
-    assert active["webServiceURL"] == "https://x.example/v1"
+    # dark slate card, green labels, white values
+    assert body["backgroundColor"] == "rgb(57,62,70)"
+    assert body["labelColor"] == "rgb(139,195,74)"
+    assert body["foregroundColor"] == "rgb(255,255,255)"
 
-    expired = pass_apple.build_pass_json({**member, "status": "EXPIRED"}, "https://x.example", "auth")
-    assert expired["backgroundColor"] == config.STATUS_COLOURS["EXPIRED"]["background"]
-    assert expired["backgroundColor"] != active["backgroundColor"]
+    # expiry in the header, right-aligned
+    assert generic["headerFields"][0]["label"] == "EXPIRY DATE"
+    assert generic["headerFields"][0]["value"] == "10-Oct-2026"
+
+    # both member names on the primary field, one per line
+    assert generic["primaryFields"][0]["label"] == "MEMBER NAME"
+    assert generic["primaryFields"][0]["value"] == \
+        "Vijayakumar Krishnaswamy\nSaranya Subramani"
+
+    labels = [f["label"] for f in generic["secondaryFields"]]
+    assert labels == ["MEMBER SINCE", "MEMBERSHIP NUMBER"]
+    assert generic["secondaryFields"][0]["value"] == "04 Nov 2022"
+    assert generic["secondaryFields"][1]["value"] == "1000207"
+
+    assert generic["auxiliaryFields"][0]["label"] == "MEMBERSHIP STATUS"
+    assert generic["auxiliaryFields"][0]["value"] == "ACTIVE"
+
+    assert body["expirationDate"] == "2026-10-10T23:59:59Z"
+    assert body["barcodes"][0]["message"] == "1000207"
+    assert body["webServiceURL"] == "https://x.example/v1"
+
+
+def test_single_name_and_missing_optional_fields():
+    from app import pass_apple
+    member = {**_sample_member(), "member_names": ["Solo Member"],
+              "expiry_date": "", "member_since": ""}
+    generic = pass_apple.build_pass_json(member, "https://x.example", "auth")["generic"]
+    assert generic["primaryFields"][0]["value"] == "Solo Member"
+    assert generic["headerFields"] == []                      # no expiry -> no header row
+    assert [f["label"] for f in generic["secondaryFields"]] == ["MEMBERSHIP NUMBER"]
+
+
+def test_google_object_mirrors_apple():
+    from app import config, pass_google
+    config.GOOGLE_ISSUER_ID = "3388000000012345678"
+    body = pass_google._object_body(_sample_member())
+
+    assert body["hexBackgroundColor"] == "#393E46"
+    assert body["header"]["defaultValue"]["value"] == \
+        "Vijayakumar Krishnaswamy, Saranya Subramani"
+    assert body["subheader"]["defaultValue"]["value"] == "Expires 10-Oct-2026"
+    headers = [m["header"] for m in body["textModulesData"]]
+    assert headers == ["MEMBER SINCE", "MEMBERSHIP NUMBER", "MEMBERSHIP STATUS"]
+    assert body["validTimeInterval"]["end"]["date"] == "2026-10-10T23:59:59.000Z"
+    assert body["barcode"]["value"] == "1000207"
+
+
+def test_apple_assets_are_bundled():
+    from app import pass_apple
+    images = pass_apple.bundled_images()
+    assert "icon.png" in images
+    for name in ("logo.png", "logo@2x.png"):
+        assert name in images, f"{name} missing - run tools/make_assets.py"
+    assert images["logo.png"].startswith(b"\x89PNG")
 
 
 def test_auth_token_is_deterministic_and_not_the_link_token():

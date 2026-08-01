@@ -91,27 +91,65 @@ def ensure_class() -> str:
 
 # --- object -----------------------------------------------------------------
 
+def _fmt_date(iso: str, style: str = "%d %b %Y") -> str:
+    if not iso:
+        return ""
+    from datetime import datetime
+    try:
+        return datetime.strptime(str(iso)[:10], "%Y-%m-%d").strftime(style)
+    except ValueError:
+        return str(iso)
+
+
 def _object_body(member: Dict) -> Dict:
-    """Status is carried by hexBackgroundColor — Google, like Apple, does not
-    support per-field bold or colour (LLD section 8).
+    """Generic pass mirroring the Apple layout and the approved mockup.
+
+    Google's Generic pass renders: cardTitle, header (the prominent line),
+    subheader, then textModulesData rows. Member name goes in `header` so it is the
+    largest element, matching Apple's primaryFields.
     """
     status = (member.get("status") or "").upper()
-    colours = config.STATUS_COLOURS.get(status, config.STATUS_COLOURS["EXPIRED"])
     membership = member.get("membership_number", "")
+    names = member.get("member_names") or []
+    if isinstance(names, str):
+        names = [names]
+    name_value = ", ".join(names) if names else member.get("email", "")
 
-    return {
+    text_modules = []
+    since_display = _fmt_date(member.get("member_since", ""))
+    if since_display:
+        text_modules.append({"id": "since", "header": "MEMBER SINCE", "body": since_display})
+    text_modules.append({"id": "membership", "header": "MEMBERSHIP NUMBER", "body": membership})
+    text_modules.append({"id": "status", "header": "MEMBERSHIP STATUS", "body": status})
+
+    body = {
         "id": object_id(member),
         "classId": class_id(),
         "state": "ACTIVE",  # Wallet object lifecycle, not membership status
-        "hexBackgroundColor": colours["hex"],
+        "hexBackgroundColor": config.CARD_BACKGROUND_HEX,
         "cardTitle": {"defaultValue": {"language": "en-AU", "value": config.ORG_NAME}},
-        "header": {"defaultValue": {"language": "en-AU", "value": "Membership"}},
-        "textModulesData": [
-            {"id": "membership", "header": "MEMBERSHIP NO", "body": membership},
-            {"id": "status", "header": "STATUS", "body": status},
-        ],
+        "header": {"defaultValue": {"language": "en-AU", "value": name_value}},
+        "textModulesData": text_modules,
         "barcode": {"type": "QR_CODE", "value": membership},
     }
+
+    expiry_display = _fmt_date(member.get("expiry_date", ""), "%d-%b-%Y")
+    if expiry_display:
+        body["subheader"] = {"defaultValue": {"language": "en-AU",
+                                             "value": f"Expires {expiry_display}"}}
+        # Native expiry so Wallet can de-emphasise a lapsed card by itself.
+        body["validTimeInterval"] = {
+            "end": {"date": f"{str(member['expiry_date'])[:10]}T23:59:59.000Z"}
+        }
+
+    if config.CARD_LOGO_URL:
+        body["logo"] = {
+            "sourceUri": {"uri": config.CARD_LOGO_URL},
+            "contentDescription": {"defaultValue": {"language": "en-AU",
+                                                    "value": f"{config.ORG_NAME} logo"}},
+        }
+
+    return body
 
 
 def upsert_object(member: Dict) -> str:

@@ -64,7 +64,9 @@ def _now():
 
 # --- members ----------------------------------------------------------------
 
-def upsert_member(email: str, membership_number: str, status: str) -> Dict[str, Any]:
+def upsert_member(email: str, membership_number: str, status: str,
+                  member_names: Optional[List[str]] = None,
+                  expiry_date: str = "", member_since: str = "") -> Dict[str, Any]:
     """Create or update a member. Returns the stored document plus two flags:
     `_is_new` and `_status_changed`, which drive whether we send an invite email
     or push an update to existing passes (LLD flow 1).
@@ -76,10 +78,19 @@ def upsert_member(email: str, membership_number: str, status: str) -> Dict[str, 
 
     if snapshot.exists:
         existing = snapshot.to_dict() or {}
-        status_changed = existing.get("status") != status
+        # Any visible card change must trigger a push, not just status.
+        status_changed = (
+            existing.get("status") != status
+            or (member_names and existing.get("member_names") != member_names)
+            or (expiry_date and existing.get("expiry_date") != expiry_date)
+            or (member_since and existing.get("member_since") != member_since)
+        )
         payload = {
             "membership_number": membership_number,
             "status": status,
+            "member_names": member_names or existing.get("member_names") or [],
+            "expiry_date": expiry_date or existing.get("expiry_date") or "",
+            "member_since": member_since or existing.get("member_since") or "",
             "updated_at": _now(),
         }
         ref.update(payload)
@@ -95,6 +106,9 @@ def upsert_member(email: str, membership_number: str, status: str) -> Dict[str, 
         "email": email,
         "membership_number": membership_number,
         "status": status,
+        "member_names": member_names or [],
+        "expiry_date": expiry_date or "",
+        "member_since": member_since or "",
         "link_token": secrets.token_urlsafe(32),
         "apple_serial": f"{mid}",
         "google_object_id": f"{config.GOOGLE_ISSUER_ID}.{mid}" if config.GOOGLE_ISSUER_ID else "",

@@ -14,12 +14,14 @@ the device calls back to GET /v1/passes/... to pull the new pass. The push carri
 no data; it is only a nudge.
 """
 
+import functools
 import hashlib
 import io
 import json
 import logging
 import time
 import zipfile
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
@@ -31,13 +33,16 @@ from . import config
 
 logger = logging.getLogger(__name__)
 
-# Apple REQUIRES icon.png — without it the pass silently fails to open. Ship a 1x1
-# transparent placeholder so the service works before real artwork exists; callers
-# override it by passing images={"icon.png": ..., "logo.png": ...}.
+# Apple REQUIRES icon.png — without it the pass silently fails to open.
 _PLACEHOLDER_PNG_B64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8"
     "/wcAAwAB/epv2AAAAABJRU5ErkJggg=="
 )
+
+# Real artwork, generated from the source logo by tools/make_assets.py.
+ASSET_DIR = Path(__file__).resolve().parent / "assets"
+APPLE_ASSETS = ("icon.png", "icon@2x.png", "icon@3x.png",
+                "logo.png", "logo@2x.png", "logo@3x.png")
 
 
 def _placeholder_png() -> bytes:
@@ -45,16 +50,75 @@ def _placeholder_png() -> bytes:
     return base64.b64decode(_PLACEHOLDER_PNG_B64)
 
 
-def build_pass_json(member: Dict, base_url: str, auth_token: str) -> Dict:
-    """pass.json for a generic membership card.
+@functools.lru_cache(maxsize=1)
+def bundled_images() -> Dict[str, bytes]:
+    """Load the generated Apple assets once per instance.
 
-    Status is conveyed by the CARD BACKGROUND COLOUR, not by bold coloured text —
-    Apple does not allow per-field colour or weight (LLD section 8).
+    Falls back to a 1x1 placeholder for icon.png only, so a missing asset directory
+    degrades to a plain-but-valid pass instead of an unopenable one.
+    """
+    images: Dict[str, bytes] = {}
+    for name in APPLE_ASSETS:
+        path = ASSET_DIR / name
+        if path.exists():
+            images[name] = path.read_bytes()
+    if "icon.png" not in images:
+        logger.warning("no icon.png in %s - using placeholder; run tools/make_assets.py",
+                       ASSET_DIR)
+        images["icon.png"] = _placeholder_png()
+    return images
+
+
+def _fmt_date(iso: str, style: str = "%d %b %Y") -> str:
+    """yyyy-mm-dd -> display form. Returns '' for blank/unparseable."""
+    if not iso:
+        return ""
+    try:
+        return datetime.strptime(str(iso)[:10], "%Y-%m-%d").strftime(style)
+    except ValueError:
+        return str(iso)
+
+
+def build_pass_json(member: Dict, base_url: str, auth_token: str) -> Dict:
+    """pass.json for the membership card, per the approved mockup.
+
+    Layout (generic pass):
+        headerFields     EXPIRY DATE            top-right, beside the logo
+        primaryFields    MEMBER NAME            one or more names, newline-joined
+        secondaryFields  MEMBER SINCE | MEMBERSHIP NUMBER
+        auxiliaryFields  MEMBERSHIP STATUS
+
+    Apple lays secondary and auxiliary fields out HORIZONTALLY within their row, so
+    the mockup's one-field-per-row stack is approximated as two rows. There is no
+    pass style that renders four separately stacked labelled rows on the face.
+
+    Status is a plain labelled field, not colour-coded: Apple has no per-field text
+    colour or weight. Card-level colours come from config.
     """
     status = (member.get("status") or "").upper()
-    colours = config.STATUS_COLOURS.get(status, config.STATUS_COLOURS["EXPIRED"])
+    names = member.get("member_names") or []
+    if isinstance(names, str):
+        names = [names]
+    name_value = "\n".join(names) if names else member.get("email", "")
 
-    return {
+    header_fields = []
+    expiry_display = _fmt_date(member.get("expiry_date", ""), "%d-%b-%Y")
+    if expiry_display:
+        header_fields.append({
+            "key": "expiry", "label": "EXPIRY DATE", "value": expiry_display,
+            "textAlignment": "PKTextAlignmentRight",
+        })
+
+    secondary_fields = []
+    since_display = _fmt_date(member.get("member_since", ""))
+    if since_display:
+        secondary_fields.append({"key": "since", "label": "MEMBER SINCE", "value": since_display})
+    secondary_fields.append({
+        "key": "membership", "label": "MEMBERSHIP NUMBER",
+        "value": member.get("membership_number", ""),
+    })
+
+    pass_json = {
         "formatVersion": 1,
         "passTypeIdentifier": config.APPLE_PASS_TYPE_ID,
         "teamIdentifier": config.APPLE_TEAM_ID,
@@ -64,16 +128,17 @@ def build_pass_json(member: Dict, base_url: str, auth_token: str) -> Dict:
         # Devices call these back to register and to pull updates.
         "webServiceURL": f"{base_url}/v1",
         "authenticationToken": auth_token,
-        "backgroundColor": colours["background"],
-        "foregroundColor": "rgb(255,255,255)",
-        "labelColor": "rgb(255,255,255)",
+        "backgroundColor": config.CARD_BACKGROUND,
+        "foregroundColor": config.CARD_FOREGROUND,
+        "labelColor": config.CARD_LABEL,
         "generic": {
+            "headerFields": header_fields,
             "primaryFields": [
-                {"key": "member", "label": "MEMBERSHIP NO",
-                 "value": member.get("membership_number", "")},
+                {"key": "name", "label": "MEMBER NAME", "value": name_value},
             ],
-            "secondaryFields": [
-                {"key": "status", "label": "STATUS", "value": status},
+            "secondaryFields": secondary_fields,
+            "auxiliaryFields": [
+                {"key": "status", "label": "MEMBERSHIP STATUS", "value": status},
             ],
             "backFields": [
                 {"key": "email", "label": "Registered email", "value": member.get("email", "")},
@@ -89,6 +154,12 @@ def build_pass_json(member: Dict, base_url: str, auth_token: str) -> Dict:
             "messageEncoding": "iso-8859-1",
         }],
     }
+
+    # Native expiry: Wallet greys the card out by itself once this passes.
+    if member.get("expiry_date"):
+        pass_json["expirationDate"] = f"{str(member['expiry_date'])[:10]}T23:59:59Z"
+
+    return pass_json
 
 
 def auth_token_for(member: Dict) -> str:
@@ -130,10 +201,8 @@ def build_pkpass(member: Dict, images: Optional[Dict[str, bytes]] = None) -> byt
     files: Dict[str, bytes] = {
         "pass.json": json.dumps(pass_json, separators=(",", ":")).encode("utf-8"),
     }
-    supplied = images or {}
-    if "icon.png" not in supplied:
-        supplied = {**supplied, "icon.png": _placeholder_png()}
-    files.update(supplied)
+    # bundled artwork first, caller overrides win
+    files.update({**bundled_images(), **(images or {})})
 
     # manifest.json is SHA-1 per file. SHA-1 is mandated by Apple's format here;
     # it is an integrity manifest, not a security control (the PKCS#7 signature is).

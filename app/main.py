@@ -63,6 +63,9 @@ def _issue_and_notify(record: dict) -> dict:
         record[ingest.FIELD_EMAIL],
         record[ingest.FIELD_MEMBERSHIP],
         record[ingest.FIELD_STATUS],
+        member_names=record.get(ingest.FIELD_NAMES) or [],
+        expiry_date=record.get(ingest.FIELD_EXPIRY, ""),
+        member_since=record.get(ingest.FIELD_SINCE, ""),
     )
     outcome = {"email": member["email"], "status": member["status"],
                "new": member["_is_new"], "status_changed": member["_status_changed"]}
@@ -114,6 +117,20 @@ def push_update(member: dict) -> dict:
 @app.get("/healthz")
 def healthz():
     return jsonify(status="ok", ts=datetime.now(timezone.utc).isoformat())
+
+
+@app.get("/assets/<path:filename>")
+def assets(filename):
+    """Serve the card artwork. Google Wallet fetches the logo over HTTPS from here,
+    so this must stay publicly reachable. Long cache: assets only change when
+    tools/make_assets.py is re-run and the service redeployed.
+    """
+    from flask import send_from_directory
+    import os as _os
+    directory = _os.path.join(_os.path.dirname(__file__), "assets")
+    response = send_from_directory(directory, filename)
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
 
 
 # --- POST /cards ------------------------------------------------------------
