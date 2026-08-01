@@ -69,12 +69,15 @@ def bundled_images() -> Dict[str, bytes]:
     return images
 
 
-LIFETIME = "NA"
+LIFETIME = "LIFETIME"
+# Accept the older "NA" form too, so members stored before the label change still
+# render as lifetime rather than as a stray literal.
+_LIFETIME_VALUES = {"LIFETIME", "NA", "N/A"}
 
 
 def is_lifetime(expiry: str) -> bool:
-    """A lifetime membership carries the literal 'NA' rather than a date."""
-    return str(expiry or "").strip().upper() == LIFETIME
+    """A lifetime membership carries a sentinel rather than a date."""
+    return str(expiry or "").strip().upper() in _LIFETIME_VALUES
 
 
 def _fmt_date(iso: str, style: str = "%d %b %Y") -> str:

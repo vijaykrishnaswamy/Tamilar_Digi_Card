@@ -91,11 +91,12 @@ def ensure_class() -> str:
 
 # --- object -----------------------------------------------------------------
 
-LIFETIME = "NA"
+LIFETIME = "LIFETIME"
+_LIFETIME_VALUES = {"LIFETIME", "NA", "N/A"}
 
 
 def is_lifetime(expiry: str) -> bool:
-    return str(expiry or "").strip().upper() == LIFETIME
+    return str(expiry or "").strip().upper() in _LIFETIME_VALUES
 
 
 def _fmt_date(iso: str, style: str = "%d %b %Y") -> str:

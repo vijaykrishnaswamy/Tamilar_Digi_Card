@@ -210,21 +210,22 @@ def test_auth_token_is_deterministic_and_not_the_link_token():
 
 # --- lifetime memberships ("NA" expiry) --------------------------------------
 
-def test_ingest_accepts_na_as_lifetime():
-    for raw in ("NA", "na", "N/A", "n.a.", "LIFETIME", "Nil", "-"):
+def test_ingest_normalises_lifetime_variants():
+    for raw in ("NA", "na", "N/A", "n.a.", "LIFETIME", "lifetime", "Nil", "-",
+                "PERPETUAL"):
         out = ingest.normalise_record({"email": "a@b.com", "membership_number": "1",
                                        "status": "ACTIVE", "expiry_date": raw})
-        assert out["expiry_date"] == "NA", f"{raw!r} should map to NA"
+        assert out["expiry_date"] == "LIFETIME", f"{raw!r} should map to LIFETIME"
 
 
-def test_apple_lifetime_shows_na_and_omits_expirationDate():
+def test_apple_lifetime_shows_lifetime_and_omits_expirationDate():
     from app import pass_apple
-    member = {**_sample_member(), "expiry_date": "NA"}
+    member = {**_sample_member(), "expiry_date": "LIFETIME"}
     body = pass_apple.build_pass_json(member, "https://x.example", "auth")
 
-    # face still shows the label, with NA as the value
+    # face still shows the label, with LIFETIME as the value
     assert body["generic"]["headerFields"][0]["label"] == "EXPIRY DATE"
-    assert body["generic"]["headerFields"][0]["value"] == "NA"
+    assert body["generic"]["headerFields"][0]["value"] == "LIFETIME"
     # critical: no native expiry, or Wallet would expire a lifetime card
     assert "expirationDate" not in body
 
@@ -236,13 +237,26 @@ def test_google_lifetime_omits_validTimeInterval():
     from app import config, pass_google
     config.GOOGLE_ISSUER_ID = "3388000000012345678"
 
-    body = pass_google._object_body({**_sample_member(), "expiry_date": "NA"})
+    body = pass_google._object_body({**_sample_member(), "expiry_date": "LIFETIME"})
     assert "validTimeInterval" not in body
-    assert "subheader" not in body                     # "Expires NA" reads badly
+    assert "subheader" not in body               # "Expires LIFETIME" reads badly
     headers = [m["header"] for m in body["textModulesData"]]
     assert headers == ["MEMBERSHIP NUMBER", "MEMBERSHIP STATUS", "EXPIRY DATE"]
-    assert body["textModulesData"][-1]["body"] == "NA"
+    assert body["textModulesData"][-1]["body"] == "LIFETIME"
 
     dated = pass_google._object_body(_sample_member())
     assert dated["validTimeInterval"]["end"]["date"] == "2026-10-10T23:59:59.000Z"
     assert dated["subheader"]["defaultValue"]["value"] == "Expires 10-Oct-2026"
+
+
+def test_legacy_na_still_treated_as_lifetime():
+    """Members stored as 'NA' before the label change must not regress."""
+    from app import pass_apple, pass_google
+    for sentinel in ("NA", "N/A", "LIFETIME"):
+        assert pass_apple.is_lifetime(sentinel), sentinel
+        assert pass_google.is_lifetime(sentinel), sentinel
+        body = pass_apple.build_pass_json({**_sample_member(), "expiry_date": sentinel},
+                                         "https://x.example", "auth")
+        assert "expirationDate" not in body, sentinel
+    assert not pass_apple.is_lifetime("2026-10-10")
+    assert not pass_apple.is_lifetime("")

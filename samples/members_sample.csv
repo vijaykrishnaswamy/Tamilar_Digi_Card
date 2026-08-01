@@ -1,7 +1,8 @@
 email,membership_number,status,member_names,expiry_date
 vijay@example.org,1000207,ACTIVE,Vijayakumar Krishnaswamy; Saranya Subramani,2026-10-10
 solo@example.org,1000208,ACTIVE,Solo Member,10/10/2026
-lifetime@example.org,1000209,ACTIVE,Lifetime Member,NA
-lapsed@example.org,1000210,EXPIRED,Lapsed Member,2025-06-30
-minimal@example.org,1000211,ACTIVE,,
-family@example.org,1000212,ACTIVE,Anand Raj|Priya Raj|Kavya Raj,4 Nov 2027
+lifetime@example.org,1000209,ACTIVE,Lifetime Member,LIFETIME
+legacy-na@example.org,1000210,ACTIVE,Legacy NA Member,NA
+lapsed@example.org,1000211,EXPIRED,Lapsed Member,2025-06-30
+minimal@example.org,1000212,ACTIVE,,
+family@example.org,1000213,ACTIVE,Anand Raj|Priya Raj|Kavya Raj,4 Nov 2027

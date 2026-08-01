@@ -27,11 +27,11 @@ FIELD_STATUS = "status"
 FIELD_NAMES = "member_names"
 FIELD_EXPIRY = "expiry_date"
 
-# Lifetime members have no expiry. The source system emits "NA", and we keep that
-# literal all the way to the card face so it reads "EXPIRY DATE  NA". Critically it
-# must NOT become a real date, and must NOT set Apple's expirationDate / Google's
-# validTimeInterval - either would make Wallet treat the card as expired.
-LIFETIME = "NA"
+# Lifetime members have no expiry. Whatever the source emits ("NA", "N/A", ...) is
+# normalised to the single literal LIFETIME, which is what appears on the card.
+# Critically it must NOT become a real date, and must NOT set Apple's expirationDate
+# or Google's validTimeInterval - either would make Wallet treat the card as expired.
+LIFETIME = "LIFETIME"
 _LIFETIME_INPUTS = {"NA", "N/A", "NIL", "NONE", "LIFETIME", "LIFE", "PERPETUAL", "-"}
 
 # Accepted CSV header aliases -> canonical field
