@@ -99,6 +99,8 @@ def test_apple_pass_includes_thumbnail_only_when_photo_exists(tmp_path):
 
 
 def test_google_object_photo_module(tmp_path, monkeypatch):
+    """The photo occupies heroImage - the front of the card, where the QR used to
+    be - and is omitted entirely when the member has no photo, leaving it blank."""
     _reset(tmp_path)
     from app import pass_google
     config.GOOGLE_ISSUER_ID = "3388000000012345678"
@@ -107,22 +109,21 @@ def test_google_object_photo_module(tmp_path, monkeypatch):
               "member_names": ["A B"], "expiry_date": "2026-10-10",
               "google_object_id": "3388000000012345678.m1", "email": "a@b.com"}
 
-    # no photo -> module omitted
-    assert "imageModulesData" not in pass_google._object_body(member)
+    # no photo -> no image key at all, and never a placeholder
+    no_photo = pass_google._object_body(member)
+    assert "heroImage" not in no_photo
+    assert "imageModulesData" not in no_photo
 
-    # with a photo, the module carries whatever signed URL photo_url returns.
-    # Signing itself needs GCS + a service-account key, so stub it here.
     _write_jpeg(tmp_path, "1000207.jpeg")
     photos.source_bytes.cache_clear()
-    signed = ("https://storage.googleapis.com/tamilar-member-photos/"
-              "member-photos/rendered/1000207.png?X-Goog-Signature=abc123")
-    monkeypatch.setattr(photos, "photo_url", lambda n: signed if n == "1000207" else "")
+    public = ("https://raw.githubusercontent.com/vijaykrishnaswamy/"
+              "Tamilar_Logo/main/1000207.jpeg")
+    monkeypatch.setattr(photos, "photo_url", lambda n: public if n == "1000207" else "")
 
     body = pass_google._object_body(member)
-    uri = body["imageModulesData"][0]["mainImage"]["sourceUri"]["uri"]
-    assert uri == signed
-    assert "X-Goog-Signature" in uri            # signed, not a public endpoint
-    assert "/photo/" not in uri                 # the old public route is gone
+    assert body["heroImage"]["sourceUri"]["uri"] == public
+    assert "imageModulesData" not in body       # front of card, not the detail view
+    assert "barcode" not in body                # QR replaced by the photo
 
 
 def test_no_public_photo_route_exists():

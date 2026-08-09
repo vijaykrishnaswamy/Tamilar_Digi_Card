@@ -170,21 +170,19 @@ def _object_body(member: Dict) -> Dict:
                                                     "value": f"{config.ORG_NAME} logo"}},
         }
 
-    # Member photo. Google's Generic pass has NO portrait slot equivalent to Apple's
-    # thumbnail, so the photo goes in an image module and renders BELOW the fields
-    # rather than beside them. Android will therefore not match the iOS layout.
-    # Absent photo = key omitted entirely.
+    # Member photo on the FRONT of the card, in the slot the QR code used to occupy.
+    # heroImage is the only front-of-card image slot Google offers and it renders as
+    # a wide banner (~3:1), so a 4:3 or portrait photo is centre-cropped top and
+    # bottom by Wallet. Absent photo = key omitted entirely, leaving the space blank
+    # rather than showing a placeholder.
     from . import photos
     photo = photos.photo_url(membership)
     if photo:
-        body["imageModulesData"] = [{
-            "id": "member_photo",
-            "mainImage": {
-                "sourceUri": {"uri": photo},
-                "contentDescription": {"defaultValue": {"language": "en-AU",
-                                                        "value": "Member photo"}},
-            },
-        }]
+        body["heroImage"] = {
+            "sourceUri": {"uri": photo},
+            "contentDescription": {"defaultValue": {"language": "en-AU",
+                                                    "value": "Member photo"}},
+        }
 
     return body
 
@@ -200,9 +198,12 @@ def upsert_object(member: Dict) -> str:
 
     existing = session.get(f"{API_BASE}/genericObject/{oid}")
     if existing.status_code == 200:
-        patched = session.patch(f"{API_BASE}/genericObject/{oid}", json=body)
-        if patched.status_code != 200:
-            raise RuntimeError(f"genericObject patch failed: {patched.status_code} {patched.text[:300]}")
+        # PUT (update), not PATCH. PATCH merges, so a field we stop sending - the
+        # barcode, or a photo that has been removed - survives on the saved card
+        # forever. PUT replaces the object with exactly the body we build here.
+        updated = session.put(f"{API_BASE}/genericObject/{oid}", json=body)
+        if updated.status_code != 200:
+            raise RuntimeError(f"genericObject update failed: {updated.status_code} {updated.text[:300]}")
         return oid
 
     created = session.post(f"{API_BASE}/genericObject", json=body)
