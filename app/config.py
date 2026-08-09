@@ -37,6 +37,12 @@ ORG_NAME = os.environ.get("ORG_NAME", "Membership")
 PHOTO_BUCKET = os.environ.get("PHOTO_BUCKET", "")
 PHOTO_PREFIX = os.environ.get("PHOTO_PREFIX", "member-photos/")
 PHOTO_LOCAL_DIR = os.environ.get("PHOTO_LOCAL_DIR", "")
+# Public HTTPS prefix for member photos named by membership number, e.g.
+# https://raw.githubusercontent.com/<user>/<repo>/main -> .../1000207.jpg
+# When set this takes precedence over PHOTO_BUCKET: Google Wallet is handed the
+# URL directly, so no rendering, GCS copy or signed URL is involved.
+# NOTE: a public host makes photos enumerable by membership number. Accepted.
+PHOTO_BASE_URL = os.environ.get("PHOTO_BASE_URL", "").rstrip("/")
 # Google Wallet fetches the photo from a V4 signed GCS URL rather than a public
 # endpoint, so the bucket stays private and photos are not enumerable. 7 days is
 # the V4 maximum. The URL is re-minted on every object create/patch.

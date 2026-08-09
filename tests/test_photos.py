@@ -21,8 +21,12 @@ def _reset(tmp_path):
     """Point the loader at a temp dir and clear the per-instance cache."""
     config.PHOTO_LOCAL_DIR = str(tmp_path)
     config.PHOTO_BUCKET = ""
+    # Cleared so the suite does not reach out to a public host, or change result
+    # depending on whether the developer has PHOTO_BASE_URL exported.
+    config.PHOTO_BASE_URL = ""
     config.SERVICE_BASE_URL = "https://wallet.example.org"
     photos.source_bytes.cache_clear()
+    photos.remote_photo_url.cache_clear()
 
 
 def test_no_photo_returns_nothing(tmp_path):

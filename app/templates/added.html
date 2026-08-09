@@ -13,7 +13,13 @@
     dl { text-align: left; margin: 20px 0; }
     dt { color: #666; font-size: 13px; }
     dd { margin: 2px 0 12px; font-weight: 600; }
-    .btn { display: inline-block; margin-top: 8px; }
+    /* Self-hosted button. The previous version hotlinked Google's badge image from
+       developers.google.com, which stopped serving it - the browser fell back to
+       alt text and rendered a broken image beside a bare link. */
+    .btn { display: inline-block; margin-top: 8px; padding: 14px 24px;
+           background: #202124; color: #fff; text-decoration: none;
+           border-radius: 28px; font-size: 16px; font-weight: 600; }
+    .btn:hover { background: #000; }
     .muted { color: #666; font-size: 13px; margin-top: 20px; }
   </style>
 </head>
@@ -21,13 +27,10 @@
   <div class="card" role="main">
     <h1>Your {{ org }} card</h1>
     <dl>
-      <dt>Membership number</dt><dd>{{ membership }}</dd>
+      <dt>Membership Number</dt><dd>{{ membership }}</dd>
       <dt>Status</dt><dd>{{ status }}</dd>
     </dl>
-    <a class="btn" href="{{ save_link }}">
-      <img src="https://developers.google.com/static/wallet/images/add-to-google-wallet-badge.png"
-           alt="Add to Google Wallet" height="48">
-    </a>
+    <a class="btn" href="{{ save_link }}">Add to Google Wallet</a>
     <p class="muted">Tap the button to save the card to Google Wallet.</p>
   </div>
 </body>

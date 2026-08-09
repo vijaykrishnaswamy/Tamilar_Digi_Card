@@ -52,7 +52,7 @@ def _body_html(member: Dict, url: str) -> str:
   <p>Hello,</p>
   <p>Your {config.ORG_NAME} membership card is ready to add to your phone.</p>
   <table style="border-collapse:collapse;margin:16px 0">
-    <tr><td style="padding:4px 12px 4px 0;color:#555">Membership number</td>
+    <tr><td style="padding:4px 12px 4px 0;color:#555">Membership Number</td>
         <td style="padding:4px 0"><strong>{member.get('membership_number','')}</strong></td></tr>
     <tr><td style="padding:4px 12px 4px 0;color:#555">Status</td>
         <td style="padding:4px 0"><strong style="color:{colour}">{status}</strong></td></tr>
@@ -80,7 +80,7 @@ def send_card_email(member: Dict) -> str:
     message["Subject"] = f"Your {config.ORG_NAME} membership card"
     message.set_content(
         f"Your {config.ORG_NAME} membership card is ready.\n\n"
-        f"Membership number: {member.get('membership_number','')}\n"
+        f"Membership Number: {member.get('membership_number','')}\n"
         f"Status: {(member.get('status') or '').upper()}\n\n"
         f"Add it to your phone: {url}\n\n"
         f"This link is personal to you. Limit {config.MAX_DEVICES_PER_MEMBER} devices.\n"

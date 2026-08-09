@@ -178,6 +178,34 @@ def ensure_rendered(membership_number: str) -> Optional[str]:
     return rendered_key(key)
 
 
+@functools.lru_cache(maxsize=512)
+def remote_photo_url(key: str) -> str:
+    """Public HTTPS photo URL for a membership number, or "" when absent.
+
+    Used when PHOTO_BASE_URL is configured (e.g. a GitHub raw prefix). The URL is
+    probed with a HEAD so a member without a photo yields no image key at all,
+    rather than a card referencing a 404.
+    """
+    if not config.PHOTO_BASE_URL:
+        return ""
+    import requests
+
+    # A streamed GET, not HEAD: raw.githubusercontent.com does not answer HEAD
+    # reliably from every network, which silently suppressed photos on Cloud Run.
+    # stream=True means the body is never downloaded.
+    for ext in (".jpg", ".jpeg", ".png"):
+        url = f"{config.PHOTO_BASE_URL}/{key}{ext}"
+        try:
+            response = requests.get(url, timeout=10, stream=True, allow_redirects=True)
+            response.close()
+            if response.status_code == 200:
+                return url
+            logger.info("no photo at %s (%s)", url, response.status_code)
+        except Exception as exc:  # noqa: BLE001 - a photo must never block a pass
+            logger.warning("photo probe failed for %s: %s", url, exc)
+    return ""
+
+
 def photo_url(membership_number: str) -> str:
     """V4 signed GCS URL for Google Wallet. Empty when there is no photo.
 
@@ -187,7 +215,11 @@ def photo_url(membership_number: str) -> str:
     change refreshes it. For a long-lived unchanged pass, re-patch periodically.
     """
     key = _safe(membership_number)
-    if not key or not config.PHOTO_BUCKET:
+    if not key:
+        return ""
+    if config.PHOTO_BASE_URL:
+        return remote_photo_url(key)
+    if not config.PHOTO_BUCKET:
         return ""
     object_key = ensure_rendered(key)
     if not object_key:

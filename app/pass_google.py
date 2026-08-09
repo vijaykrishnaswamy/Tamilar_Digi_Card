@@ -146,15 +146,19 @@ def _object_body(member: Dict) -> Dict:
         "cardTitle": {"defaultValue": {"language": "en-AU", "value": config.ORG_NAME}},
         "header": {"defaultValue": {"language": "en-AU", "value": name_value}},
         "textModulesData": text_modules,
-        "barcode": {"type": "QR_CODE", "value": membership},
     }
+    # No barcode: nothing scans these cards, and Google's own guidance is not to
+    # show one without scanning capability.
 
     # Lifetime members get NO subheader and NO validTimeInterval - setting the latter
     # would make Wallet treat a never-expiring card as expired.
     expiry_display = _fmt_date(expiry_raw, "%d-%b-%Y")
     if expiry_display and not is_lifetime(expiry_raw):
+        # Past tense for a lapsed membership: "Expires on" reads as though the card
+        # is still valid.
+        prefix = "Expired on" if status == "EXPIRED" else "Expires on"
         body["subheader"] = {"defaultValue": {"language": "en-AU",
-                                             "value": f"Expires {expiry_display}"}}
+                                             "value": f"{prefix} {expiry_display}"}}
         body["validTimeInterval"] = {
             "end": {"date": f"{str(expiry_raw)[:10]}T23:59:59.000Z"}
         }

@@ -13,3 +13,5 @@ PyJWT==2.8.0
 httpx[http2]==0.27.0
 # member photo cropping/resizing for the pass thumbnail
 Pillow==10.4.0
+# HEAD probe for publicly hosted member photos (already a transitive dependency)
+requests==2.32.3
