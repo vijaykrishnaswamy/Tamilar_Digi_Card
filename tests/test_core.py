@@ -184,11 +184,12 @@ def test_google_object_mirrors_apple():
     assert body["hexBackgroundColor"] == "#393E46"
     assert body["header"]["defaultValue"]["value"] == \
         "Vijayakumar Krishnaswamy, Saranya Subramani"
-    assert body["subheader"]["defaultValue"]["value"] == "Expires 10-Oct-2026"
+    assert body["subheader"]["defaultValue"]["value"] == "Expires on 10-Oct-2026"
     headers = [m["header"] for m in body["textModulesData"]]
     assert headers == ["MEMBERSHIP NUMBER", "MEMBERSHIP STATUS"]
     assert body["validTimeInterval"]["end"]["date"] == "2026-10-10T23:59:59.000Z"
-    assert body["barcode"]["value"] == "1000207"
+    # No barcode on the Google pass - nothing scans these cards.
+    assert "barcode" not in body
 
 
 def test_apple_assets_are_bundled():
@@ -246,7 +247,7 @@ def test_google_lifetime_omits_validTimeInterval():
 
     dated = pass_google._object_body(_sample_member())
     assert dated["validTimeInterval"]["end"]["date"] == "2026-10-10T23:59:59.000Z"
-    assert dated["subheader"]["defaultValue"]["value"] == "Expires 10-Oct-2026"
+    assert dated["subheader"]["defaultValue"]["value"] == "Expires on 10-Oct-2026"
 
 
 def test_legacy_na_still_treated_as_lifetime():
@@ -260,3 +261,18 @@ def test_legacy_na_still_treated_as_lifetime():
         assert "expirationDate" not in body, sentinel
     assert not pass_apple.is_lifetime("2026-10-10")
     assert not pass_apple.is_lifetime("")
+
+
+def test_google_expired_uses_past_tense():
+    """An EXPIRED card must read "Expired on" - "Expires on" implies it is still valid."""
+    from app import config, pass_google
+    config.GOOGLE_ISSUER_ID = "3388000000012345678"
+
+    member = _sample_member()
+    member["status"] = "EXPIRED"
+    body = pass_google._object_body(member)
+    assert body["subheader"]["defaultValue"]["value"] == "Expired on 10-Oct-2026"
+
+    member["status"] = "ACTIVE"
+    active = pass_google._object_body(member)
+    assert active["subheader"]["defaultValue"]["value"] == "Expires on 10-Oct-2026"
