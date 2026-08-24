@@ -23,7 +23,11 @@ import csv
 import sys
 from collections import Counter
 
-OUT_HEADER = ["emailId", "Name", "MembershipNumber", "Status", "StartDate", "ExpiryDate"]
+# Header names MUST be ones app.ingest._ALIASES recognises, or the job silently
+# discards the column. 'emailId' and 'ExpiryDate' are NOT aliases: the first makes
+# every row fail with "email is required", and the second is worse - it parses
+# cleanly and drops every annual member's expiry date without an error.
+OUT_HEADER = ["email", "Name", "membership_number", "status", "start_date", "expiry_date"]
 LIFETIME_LABEL = "Life Time"
 
 # Confirmed duplicate records. 1000277 duplicates 1000229 (same person, same

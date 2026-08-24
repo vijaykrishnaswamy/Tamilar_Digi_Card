@@ -15,3 +15,4 @@ dist/
 # files under samples/ are small fixtures only.
 samples/_memberships_raw*
 samples/memberships_wallet_send.csv
+samples/_karups_only.csv
