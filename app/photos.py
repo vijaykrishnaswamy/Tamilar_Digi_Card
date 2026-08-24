@@ -5,8 +5,11 @@ Photos are keyed on the MEMBERSHIP NUMBER, matching how they are named on disk
 internal member_id (a sha256 of the email) - the operator names files from the
 membership number they can see.
 
-Storage: a GCS bucket, because Cloud Run cannot read the operator's laptop. Upload
-with tools/upload_photos.py. A local directory is also supported for development.
+Storage, in the order they are tried: a local directory (development only), a GCS
+bucket (upload with tools/upload_photos.py), then PHOTO_BASE_URL - the same public
+HTTPS location Google Wallet is handed. Apple embeds image bytes in the .pkpass
+rather than a URL, so when only PHOTO_BASE_URL is configured the bytes are fetched
+here instead of being referenced.
 
 Absent photo = no photo on the card. Never an error, never a placeholder face.
 
@@ -74,6 +77,28 @@ def _read_gcs(key: str) -> Optional[bytes]:
     return None
 
 
+def _read_url(key: str) -> Optional[bytes]:
+    """Download the photo from PHOTO_BASE_URL.
+
+    Extension order matches remote_photo_url so Apple and Google resolve the same
+    file for a member who happens to have more than one uploaded.
+    """
+    if not config.PHOTO_BASE_URL:
+        return None
+    import requests
+
+    for ext in (".jpg", ".jpeg", ".png"):
+        url = f"{config.PHOTO_BASE_URL}/{key}{ext}"
+        try:
+            response = requests.get(url, timeout=10, allow_redirects=True)
+            if response.status_code == 200:
+                return response.content
+            logger.info("no photo at %s (%s)", url, response.status_code)
+        except Exception as exc:  # noqa: BLE001 - a photo must never block a pass
+            logger.warning("photo fetch failed for %s: %s", url, exc)
+    return None
+
+
 @functools.lru_cache(maxsize=512)
 def source_bytes(membership_number: str) -> Optional[bytes]:
     """Raw photo bytes, or None when the member has no photo.
@@ -85,7 +110,7 @@ def source_bytes(membership_number: str) -> Optional[bytes]:
     if not key:
         return None
     try:
-        return _read_local(key) or _read_gcs(key)
+        return _read_local(key) or _read_gcs(key) or _read_url(key)
     except Exception as exc:  # noqa: BLE001 - a photo problem must never block a pass
         logger.warning("photo lookup failed for %s: %s", key, exc)
         return None

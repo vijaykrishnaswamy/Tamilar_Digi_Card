@@ -147,8 +147,12 @@ def _object_body(member: Dict) -> Dict:
         "header": {"defaultValue": {"language": "en-AU", "value": name_value}},
         "textModulesData": text_modules,
     }
-    # No barcode: nothing scans these cards, and Google's own guidance is not to
-    # show one without scanning capability.
+    # QR carrying the membership number, matching the Apple pass. Google renders it
+    # at a fixed position at the foot of the card; unlike Apple's layout there is no
+    # control over placement. Like Apple's, the payload is the membership number in
+    # clear - a claim to be resolved against the member record, not proof of identity.
+    if membership:
+        body["barcode"] = {"type": "QR_CODE", "value": membership}
 
     # Lifetime members get NO subheader and NO validTimeInterval - setting the latter
     # would make Wallet treat a never-expiring card as expired.
@@ -170,11 +174,13 @@ def _object_body(member: Dict) -> Dict:
                                                     "value": f"{config.ORG_NAME} logo"}},
         }
 
-    # Member photo on the FRONT of the card, in the slot the QR code used to occupy.
-    # heroImage is the only front-of-card image slot Google offers and it renders as
-    # a wide banner (~3:1), so a 4:3 or portrait photo is centre-cropped top and
-    # bottom by Wallet. Absent photo = key omitted entirely, leaving the space blank
-    # rather than showing a placeholder.
+    # Member photo on the FRONT of the card. heroImage is the only front-of-card image
+    # slot Google offers and it renders as a wide banner (~3:1), so a 4:3 or portrait
+    # photo is centre-cropped top and bottom by Wallet. There is no equivalent of
+    # Apple's square thumbnail beside the primary field, and card row templates accept
+    # text field paths only, so the photo cannot sit next to the member name here.
+    # Absent photo = key omitted entirely, leaving the space blank rather than showing
+    # a placeholder.
     from . import photos
     photo = photos.photo_url(membership)
     if photo:

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{{ org }} — open this on your phone</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+           margin: 0; padding: 32px 20px; color: #111; background: #f6f6f6; }
+    .card { max-width: 480px; margin: 40px auto; background: #fff; border-radius: 12px;
+            padding: 28px; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+    h1 { font-size: 20px; margin: 0 0 12px; }
+    p { line-height: 1.55; color: #333; }
+    ol { line-height: 1.7; color: #333; padding-left: 20px; }
+    .muted { color: #666; font-size: 14px; }
+    .note { background: #f0f7ff; border: 1px solid #cfe3ff; border-radius: 8px;
+            padding: 12px 14px; margin: 18px 0 0; font-size: 14px; color: #234; }
+    a { color: #0b5fff; }
+  </style>
+</head>
+<body>
+  <div class="card" role="main">
+    <h1>Please open this on your phone</h1>
+    <p>Your membership card is added to the wallet app on your phone, so it needs to
+       be opened on the phone you want to keep it on — not on a computer.</p>
+    <ol>
+      <li>Open the same email on your phone.</li>
+      <li>Tap <strong>Add your card</strong>.</li>
+      <li>Your card is saved to your phone's wallet and stays there.</li>
+    </ol>
+    <div class="note">
+      Nothing has been used up by opening this on your computer. Your card is still
+      waiting for you, and the link works as many times as you need.
+    </div>
+    <p class="muted">
+      {% if support %}
+        Need a hand? Email <a href="mailto:{{ support }}">{{ support }}</a> and we
+        will help you get it set up.
+      {% endif %}
+    </p>
+  </div>
+</body>
+</html>

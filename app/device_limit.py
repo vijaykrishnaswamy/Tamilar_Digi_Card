@@ -29,20 +29,45 @@ COOKIE_MAX_AGE = 60 * 60 * 24 * 365 * 2  # 2 years
 
 PLATFORM_APPLE = "APPLE"
 PLATFORM_GOOGLE = "GOOGLE"
+# Not a wallet platform. A desktop browser cannot hold a pass, so a click from one
+# must not be treated as an install - see detect_platform.
+PLATFORM_DESKTOP = "DESKTOP"
+
+# Mobile Apple devices. 'macintosh' / 'mac os x' are deliberately NOT here: macOS
+# is a desktop and is handled as such, so a laptop click does not burn a slot.
+_APPLE_MOBILE = ("iphone", "ipad", "ipod")
+
+# Desktop operating systems. Checked AFTER the mobile tokens because iPadOS reports
+# a Macintosh UA, and some Android tablets include 'linux'.
+_DESKTOP_HINTS = ("windows nt", "macintosh", "mac os x", "cros", "x11", "linux")
 
 
 def detect_platform(user_agent: str) -> str:
-    """iOS vs Android from the User-Agent (LLD flow 2).
+    """Serve-time platform from the User-Agent (LLD flow 2).
 
-    Only used to choose which pass type to serve. It is NOT a device identity —
-    that comes from Apple's registration callback or the cookie.
+    Three outcomes, not two. Returning GOOGLE for an unrecognised UA meant a click
+    from a Windows laptop entered the Google branch, minted a device id and consumed
+    one of the member's two slots - the member then hit "device limit reached" having
+    installed the card on a single phone. A desktop is now classified separately and
+    no device is registered for it.
+
+    Only used to choose what to serve. It is NOT a device identity - that comes from
+    Apple's registration callback or the cookie.
     """
     ua = (user_agent or "").lower()
-    if any(token in ua for token in ("iphone", "ipad", "ipod", "macintosh", "mac os x")):
+    if not ua:
+        # No UA at all is far more likely to be a bot or link-scanner than a member.
+        return PLATFORM_DESKTOP
+    if any(token in ua for token in _APPLE_MOBILE):
         return PLATFORM_APPLE
     if "android" in ua:
         return PLATFORM_GOOGLE
-    return PLATFORM_GOOGLE  # unknown: Google's save link works in any browser
+    if any(token in ua for token in _DESKTOP_HINTS):
+        return PLATFORM_DESKTOP
+    # Unknown and not obviously desktop: treat as Android. The Google save link
+    # works in any browser, so this stays the safer fallback for a real handset
+    # with an unusual UA.
+    return PLATFORM_GOOGLE
 
 
 def new_device_id() -> str:

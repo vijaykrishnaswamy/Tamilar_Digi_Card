@@ -93,14 +93,41 @@ def test_json_accepts_single_object_and_array():
 
 def test_detect_platform():
     ios = ("Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-           "Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)")
-    android = ("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36",)
+           "Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X)",
+           "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) GSA/300 Mobile/15E148")
+    android = ("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36",
+               "Mozilla/5.0 (Linux; Android 13; SM-X200) AppleWebKit/537.36 Safari/537.36",
+               "Mozilla/5.0 (Linux; Android 13; SM-S918B) SamsungBrowser/23")
     for ua in ios:
         assert device_limit.detect_platform(ua) == device_limit.PLATFORM_APPLE
     for ua in android:
         assert device_limit.detect_platform(ua) == device_limit.PLATFORM_GOOGLE
-    # unknown falls back to Google, whose save link works in any browser
-    assert device_limit.detect_platform("") == device_limit.PLATFORM_GOOGLE
+    # An unknown handset still falls back to Google - the save link works in any
+    # browser, so that is the safer default for a real phone with an odd UA.
+    assert device_limit.detect_platform("SomeWeirdPhone/1.0") == device_limit.PLATFORM_GOOGLE
+
+
+def test_desktop_is_not_a_wallet_platform():
+    """A desktop click must NOT be classified as Android.
+
+    It used to be, which sent it down the Google branch where a device id was minted
+    and registered. Opening the invite email on a laptop therefore consumed one of
+    the member's two slots and they hit "device limit reached" having installed the
+    card on a single phone.
+
+    macOS is included deliberately: a Mac is a desktop, even though iPadOS reports a
+    similar Macintosh token - hence the mobile tokens are matched first.
+    """
+    desktops = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Edg/120",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605",
+        "Mozilla/5.0 (X11; CrOS x86_64 14541) AppleWebKit/537.36 Chrome/120",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120",
+        "",  # no UA at all: more likely a bot or link scanner than a member
+    )
+    for ua in desktops:
+        assert device_limit.detect_platform(ua) == device_limit.PLATFORM_DESKTOP, ua
 
 
 def test_google_device_id_reuses_cookie():
@@ -188,8 +215,9 @@ def test_google_object_mirrors_apple():
     headers = [m["header"] for m in body["textModulesData"]]
     assert headers == ["MEMBERSHIP NUMBER", "MEMBERSHIP STATUS"]
     assert body["validTimeInterval"]["end"]["date"] == "2026-10-10T23:59:59.000Z"
-    # No barcode on the Google pass - nothing scans these cards.
-    assert "barcode" not in body
+    # QR matching the Apple pass: membership number in clear, position fixed by Google.
+    assert body["barcode"] == {"type": "QR_CODE",
+                              "value": _sample_member()["membership_number"]}
 
 
 def test_apple_assets_are_bundled():

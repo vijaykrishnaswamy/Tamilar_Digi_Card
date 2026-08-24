@@ -170,6 +170,15 @@ def add_card():
     mid = member["member_id"]
     platform = device_limit.detect_platform(request.headers.get("User-Agent", ""))
 
+    if platform == device_limit.PLATFORM_DESKTOP:
+        # A desktop browser cannot hold a wallet pass. Return BEFORE any device is
+        # registered: previously this fell through to the Google branch and consumed
+        # one of the member's slots, so opening the email on a laptop left them with
+        # a single usable slot and an unexplained "device limit reached".
+        # No event logged as a click either - it is not an install attempt.
+        return render_template("desktop.html", org=config.ORG_NAME,
+                               support=config.SUPPORT_EMAIL), 200
+
     if platform == device_limit.PLATFORM_APPLE:
         # Apple's own registration callback is the authoritative count, so we do a
         # soft pre-check here and let the callback make the final decision.

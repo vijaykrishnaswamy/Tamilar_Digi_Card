@@ -99,8 +99,9 @@ def test_apple_pass_includes_thumbnail_only_when_photo_exists(tmp_path):
 
 
 def test_google_object_photo_module(tmp_path, monkeypatch):
-    """The photo occupies heroImage - the front of the card, where the QR used to
-    be - and is omitted entirely when the member has no photo, leaving it blank."""
+    """The photo occupies heroImage - the only front-of-card image slot Google offers -
+    and is omitted entirely when the member has no photo, leaving it blank. It coexists
+    with the QR, which Google renders separately at the foot of the card."""
     _reset(tmp_path)
     from app import pass_google
     config.GOOGLE_ISSUER_ID = "3388000000012345678"
@@ -123,7 +124,7 @@ def test_google_object_photo_module(tmp_path, monkeypatch):
     body = pass_google._object_body(member)
     assert body["heroImage"]["sourceUri"]["uri"] == public
     assert "imageModulesData" not in body       # front of card, not the detail view
-    assert "barcode" not in body                # QR replaced by the photo
+    assert body["barcode"]["value"] == "1000207"  # QR and photo coexist
 
 
 def test_no_public_photo_route_exists():

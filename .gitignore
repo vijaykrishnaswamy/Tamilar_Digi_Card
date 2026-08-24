@@ -9,3 +9,9 @@ __pycache__/
 certs/
 dist/
 *.pkpass
+
+# Real membership exports. Personal names and email addresses for the full member
+# base - kept out of git history even though this repo is private. The committed
+# files under samples/ are small fixtures only.
+samples/_memberships_raw*
+samples/memberships_wallet_send.csv
